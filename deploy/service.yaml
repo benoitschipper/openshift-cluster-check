@@ -1,0 +1,30 @@
+# Apply order: 5 of 5
+#
+# This Service exposes the health-checker /metrics endpoint within the cluster.
+# Prometheus scrape annotations enable automatic discovery by Prometheus instances
+# configured with the standard annotation-based scrape config.
+#
+# Apply with: kubectl apply -f deploy/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: health-checker
+  namespace: openshift-health-checker
+  labels:
+    app: health-checker
+  annotations:
+    # Standard Prometheus scrape annotations for annotation-based service discovery.
+    # These are picked up by Prometheus instances configured with kubernetes_sd_configs
+    # targeting services with prometheus.io/scrape: "true".
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  selector:
+    app: health-checker
+  ports:
+    - name: metrics
+      port: 8080
+      targetPort: metrics
+      protocol: TCP

@@ -1,0 +1,20 @@
+# Apply order: 3 of 5
+# This ClusterRoleBinding binds the health-checker ClusterRole to the
+# health-checker ServiceAccount, granting it cluster-wide read-only access
+# to the resources defined in the ClusterRole.
+#
+# Apply with: kubectl apply -f deploy/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: health-checker
+  labels:
+    app: health-checker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: health-checker
+subjects:
+  - kind: ServiceAccount
+    name: health-checker
+    namespace: openshift-health-checker

@@ -1,0 +1,43 @@
+# Apply order: 2 of 5
+# This ClusterRole grants the health-checker read-only access to the resources
+# it needs to perform health checks. No write, patch, update, delete, or mutate
+# permissions are granted — least-privilege principle.
+#
+# Resources checked:
+#   - nodes: for node readiness check
+#   - pods: for system pod failure check (per namespace)
+#   - clusteroperators.config.openshift.io: for operator degradation check
+#   - clusterversions.config.openshift.io: for cluster version degradation check
+#
+# Apply with: kubectl apply -f deploy/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: health-checker
+  labels:
+    app: health-checker
+rules:
+  # Node readiness check
+  # 'watch' is intentionally omitted: the health-checker uses a polling model
+  # (ticker-based), not an informer/watch-stream model. Granting 'watch' would
+  # open a persistent streaming connection that is never used, violating
+  # least-privilege. Add 'watch' back only if informers are adopted in future.
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  # System pod failure check (lists pods per namespace)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Namespace listing (needed to enumerate system namespaces for pod checks)
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  # ClusterOperator degradation check (OpenShift config API)
+  - apiGroups: ["config.openshift.io"]
+    resources: ["clusteroperators"]
+    verbs: ["get", "list"]
+  # ClusterVersion degradation check (OpenShift config API)
+  - apiGroups: ["config.openshift.io"]
+    resources: ["clusterversions"]
+    verbs: ["get", "list"]

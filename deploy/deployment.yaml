@@ -1,0 +1,119 @@
+# Apply order: 4 of 5
+#
+# SCC Requirements:
+#   This Deployment is compatible with the OpenShift 'restricted' SCC
+#   (or 'restricted-v2' on OpenShift 4.11+). No privileged or custom SCC is needed.
+#
+#   Why no privileged SCC is needed:
+#   - runAsNonRoot: true enforced at both pod and container level
+#   - No runAsUser set — OpenShift assigns an arbitrary UID from the namespace's
+#     allocated UID range via the 'restricted' SCC. The container image is built
+#     to be UID-agnostic (binary owned by group 0 with group-executable permissions).
+#   - Read-only root filesystem
+#   - No privilege escalation
+#   - All Linux capabilities dropped
+#   - No hostPath mounts, no host networking, no host PID, no host IPC
+#
+# Apply with: kubectl apply -f deploy/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: health-checker
+  namespace: openshift-health-checker
+  labels:
+    app: health-checker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: health-checker
+  template:
+    metadata:
+      labels:
+        app: health-checker
+    spec:
+      serviceAccountName: health-checker
+      # Do not use the default ServiceAccount
+      automountServiceAccountToken: true
+
+      # Security context for the pod — compatible with 'restricted' SCC.
+      # runAsUser is intentionally omitted: OpenShift's 'restricted' SCC assigns
+      # an arbitrary UID from the namespace's allocated UID range at pod start.
+      # Setting runAsUser would require the 'anyuid' SCC or a custom SCC.
+      # runAsNonRoot: true ensures the assigned UID is always non-zero.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: health-checker
+          # Replace with your actual image reference after building.
+          # Example: quay.io/your-org/health-checker:latest
+          image: quay.io/your-org/health-checker:latest
+          imagePullPolicy: Always
+
+          ports:
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+
+          env:
+            # How often to run health checks (seconds). Default: 30
+            - name: CHECK_INTERVAL
+              value: "30"
+            # HTTP port for /metrics endpoint. Default: 8080
+            - name: METRICS_PORT
+              value: "8080"
+            # Comma-separated namespace prefixes considered system namespaces.
+            # Default: openshift-,kube-
+            # The kube- prefix covers kube-system, kube-public, kube-node-lease,
+            # and any future kube-* namespaces added by Kubernetes.
+            # To add more prefixes: "openshift-,kube-,my-infra-"
+            - name: SYSTEM_NAMESPACE_PREFIXES
+              value: "openshift-,kube-"
+            # Comma-separated exact namespace names considered system namespaces.
+            # Default: "" (empty — the kube- prefix above subsumes all kube-* namespaces).
+            # Set this to add non-prefixed system namespaces (e.g., "monitoring").
+            - name: SYSTEM_NAMESPACES
+              value: ""
+
+          # Security context for the container — compatible with 'restricted' SCC.
+          # runAsUser is intentionally omitted (see pod-level securityContext comment).
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Liveness probe: restarts the container if /metrics stops responding
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          # Readiness probe: removes pod from Service endpoints if /metrics is unavailable
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+
+          # No volume mounts needed — read-only rootfs, no persistent state
