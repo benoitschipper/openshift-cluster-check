@@ -1,105 +1,84 @@
-name: Build and Push health-checker
+name: Test, Build & Publish (multi-arch)
 
 on:
   push:
-    branches: [ main ]
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
 
 env:
   REGISTRY: ghcr.io
+  # ghcr namespace is the owner/repo by default
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  test:
+    name: Go test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    env:
-      # Force use of proxy; no private modules here.
-      GOPROXY: https://proxy.golang.org,direct
-      GONOSUMDB: ""
-      GONOPROXY: ""
-      GOSUMDB: sum.golang.org
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version-file: go.mod
+          cache: true
 
-      # OPTIONAL: temporary fix for the invalid openshift/api version
-      # Replace <goodsha> with a real commit SHA from github.com/openshift/api
-      - name: Add temporary go.work with openshift/api replace
-        run: |
-          cat > go.work << 'EOF'
-          go 1.21
+      - name: Download deps
+        run: go mod download
 
-          use ./ 
+      - name: Test
+        run: go test ./...
 
-          replace github.com/openshift/api => github.com/openshift/api v0.0.0-20240101000000-<goodsha>
-          EOF
-          cat go.work
+  build-and-push:
+    name: Build & push image (amd64, arm64)
+    runs-on: ubuntu-latest
+    needs: [test]
+    # Only push on main or tags; PRs just build locally
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # Download modules based on existing go.mod/go.sum without touching them
-      - name: Download modules (no tidy)
-        run: |
-          go env
-          go mod download ./...
-
-      # 1. Build standalone binaries for GitHub Artifacts
-      - name: Build Binaries
-        run: |
-          mkdir -p dist
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -o dist/health-checker-linux-amd64 ./cmd/health-checker
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
-            go build -trimpath -o dist/health-checker-linux-arm64 ./cmd/health-checker
-
-      - name: Upload Binaries to GitHub Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: health-checker-binaries
-          path: dist/*
-
-      # 2. Setup Docker for Multi-Arch Build
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3. Login to GitHub Container Registry
-      - name: Log in to the Container registry
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 4. Extract metadata (tags, labels) for Docker
-      - name: Extract Docker metadata
+      - name: Docker meta (tags, labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=sha,format=short
-            latest
+            type=ref,event=tag
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
 
-      # 5. Build and push multi-arch Docker image
-      - name: Build and push Docker image
+      - name: Build (PR) or Build+Push (main/tags)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          push: true
           platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
