@@ -8,7 +8,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # This will result in ghcr.io/username/repo-name
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -27,12 +26,20 @@ jobs:
         with:
           go-version: '1.21'
 
+      # IMPORTANT: ensure go.sum has all required entries
+      - name: Download modules (go mod tidy)
+        run: |
+          go env
+          go mod tidy
+
       # 1. Build standalone binaries for GitHub Artifacts
       - name: Build Binaries
         run: |
           mkdir -p dist
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/health-checker-linux-amd64 ./cmd/health-checker
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o dist/health-checker-linux-arm64 ./cmd/health-checker
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+            go build -o dist/health-checker-linux-amd64 ./cmd/health-checker
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 \
+            go build -o dist/health-checker-linux-arm64 ./cmd/health-checker
 
       - name: Upload Binaries to GitHub Artifacts
         uses: actions/upload-artifact@v4
@@ -63,15 +70,15 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=semver,pattern={{version}}
             type=sha,format=short
             latest
 
-      # 5. Build and Push Multi-Arch Image
+      # 5. Build and push multi-arch Docker image
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
