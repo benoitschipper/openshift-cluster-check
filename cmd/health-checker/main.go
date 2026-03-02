@@ -29,7 +29,7 @@ func main() {
 		log.Fatalf("ERROR: invalid configuration: %v", err)
 	}
 
-	log.Printf("Starting health-checker: interval=%s port=%d", cfg.CheckInterval, cfg.MetricsPort)
+	log.Printf("INFO: Starting health-checker: interval=%s port=%d", cfg.CheckInterval, cfg.MetricsPort)
 
 	// 2. Build in-cluster Kubernetes config.
 	restCfg, err := rest.InClusterConfig()
@@ -61,12 +61,12 @@ func main() {
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	go func() {
 		sig := <-sigCh
-		log.Printf("Received signal %v, shutting down...", sig)
+		log.Printf("INFO: Received signal %v, shutting down...", sig)
 		cancel()
 	}()
 
 	// 7. Run one initial check cycle so metrics are populated before the first scrape.
-	log.Println("Running initial health check cycle...")
+	log.Println("INFO: Running initial health check cycle...")
 	checker.RunChecks(ctx, k8sClient, ocpClient, cfg)
 
 	// 8. Start the HTTP server for /metrics.
@@ -84,7 +84,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Serving /metrics on %s", addr)
+		log.Printf("INFO: Serving /metrics on %s", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("ERROR: HTTP server failed: %v", err)
 		}
@@ -100,5 +100,5 @@ func main() {
 		log.Printf("WARNING: HTTP server shutdown error: %v", err)
 	}
 
-	log.Println("health-checker stopped.")
+	log.Println("INFO: health-checker stopped.")
 }

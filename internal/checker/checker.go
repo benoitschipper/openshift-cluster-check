@@ -15,7 +15,7 @@ import (
 // A failure in one check does not prevent the others from running.
 // Each check updates its own Prometheus metric.
 func RunChecks(ctx context.Context, k8sClient kubernetes.Interface, ocpClient configv1client.ConfigV1Interface, cfg config.Config) {
-	log.Println("Running health checks...")
+	log.Println("INFO: Running health checks...")
 
 	// Each check is called independently; errors are handled internally per check.
 	CheckClusterOperators(ctx, ocpClient)
@@ -23,7 +23,7 @@ func RunChecks(ctx context.Context, k8sClient kubernetes.Interface, ocpClient co
 	CheckNodes(ctx, k8sClient)
 	CheckSystemPods(ctx, k8sClient, cfg)
 
-	log.Println("Health checks complete.")
+	log.Println("INFO: Health checks complete.")
 }
 
 // StartLoop runs RunChecks on the configured interval using a ticker.
@@ -37,7 +37,7 @@ func StartLoop(ctx context.Context, k8sClient kubernetes.Interface, ocpClient co
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Checker loop stopping: context cancelled.")
+			log.Println("INFO: Checker loop stopping: context cancelled.")
 			return
 		case <-ticker.C:
 			RunChecks(ctx, k8sClient, ocpClient, cfg)
