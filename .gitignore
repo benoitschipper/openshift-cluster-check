@@ -1,3 +1,4 @@
 .roo/
 openspec/*
 openspec/config.yaml
+health-checker
